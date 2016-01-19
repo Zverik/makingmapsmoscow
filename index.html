@@ -1,0 +1,149 @@
+<!doctype html>
+<html>
+<head>
+<title>Open Snake Routing Machine</title>
+<meta charset="utf-8">
+<link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet/v0.7.7/leaflet.css" />
+<script src="http://cdn.leafletjs.com/leaflet/v0.7.7/leaflet.js"></script>
+<script src="leaflet-routing-machine.min.js"></script>
+<style>
+html, body, #map { background: black; height: 100%; margin: 0; }
+#map { position: fixed; width: 100%; top: 0; left: 0; bottom: 0; }
+#content { position: relative; color: #ddd; text-align: center; font-family: sans-serif; z-index: 999; }
+h1 { font-size: 100px; margin-top: 100px; }
+h1 {  color: black; text-shadow: -1px -1px 0 white, -1px 1px 0 white, 1px 1px 0 white, 1px -1px 0 white; }
+#text { width: 80%; margin: 0 auto; text-align: left; }
+#left { float: left; width: 45%; }
+#right { float: right; width: 45%; }
+#smallmap { height: 300px; }
+a { color: white; }
+</style>
+</head>
+<body onload="javascript:init();">
+<div id="map"></div>
+<div id="content">
+<h1>Схемотехника</h1>
+<div id="text">
+  <div id="left">
+    Совместная встреча ГИС-Лаб и OpenStreetMap. Доклады, общение, пицца.
+    <br><br>
+    В субботу, 6 февраля с 12 до 19.
+    <br><br><br><br>
+    Участие бесплатно, <a href="http://textual.ru/schem.php">регистрация</a> обязательна,
+    закрывается утром 5 февраля.
+    <br><br>
+    Небольшие доклады сделают:
+    <ul>
+      <li>Илья Зверев (про FOSDEM)</li>
+      <li>Лев Драгунов (про дороги в Рим)</li>
+    </ul>
+    Если хотите тоже, напишите <a href="mailto:ilya@zverev.info">Илье Звереву</a> своё имя и тему.
+  </div>
+  <div id="right">
+    Москва, ст. м. Аэропорт, Ленинградский проспект, 39 стр. 79 (офис Mail.Ru Group в&nbsp;высокой стеклянной башне).
+    <br><br>
+    <div id="smallmap"></div>
+  </div>
+</div>
+</div>
+<script type="text/javascript">
+var STEP_SIZE = 3; // in pixels
+var LINE_LENGTH = 120; // in pixels
+var QUERY_HEADSTART = 5; // in seconds
+var MOVE_INTERVAL = 20; // in milliseconds
+var SPEED_PX_PER_SEC = 300;
+
+var map;
+var route = [[55.8, 37.51]];
+var head = 0;
+var line;
+var router;
+var marker;
+var querying = false;
+var LINE_LENGTH_STEPS = Math.floor(LINE_LENGTH / STEP_SIZE);
+
+function init() {
+  map = L.map('map', {
+    dragging: false, scrollWheelZoom: false, doubleClickZoom: false,
+    tap: false, touchZoom: false, keyboard: false,
+    zoomControl: false, attributionControl: false
+  }).setView([55.8, 37.52], 13);
+  L.tileLayer('data:image/gif;base64,R0lGODdhAQABAIABAAAAAP///ywAAAAAAQABAAACAkQBADs=').addTo(map);
+  line = L.polyline([route[0]], {
+    color: '#444',
+    weight: 1,
+    opacity: 1
+  }).addTo(map);
+  marker = L.circleMarker(route[0], {
+    radius: 2,
+    stroke: false,
+    fill: true,
+    fillColor: '#777',
+    fillOpacity: 1
+  }).addTo(map);
+  router = L.Routing.osrm({ serviceUrl: 'http://router.project-osrm.org/viaroute' });
+  advance();
+
+  var map2 = L.map('smallmap', { zoomControl: false, doubleClickZoom: false }).setView([55.79834, 37.53632], 16);
+  L.tileLayer('http://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '<a href="https://openstreetmap.org">OSM</a>' }).addTo(map2);
+  L.polyline([[55.79998,37.53434],[55.79964,37.5352],[55.79889,37.53419],[55.79721,37.53813],[55.79705,37.53787]]).addTo(map2);
+  map2.on('dblclick', function() { console.log(map2.getCenter(), map2.getZoom()); });
+}
+
+function advance() {
+  if (head + 1 < route.length) {
+    head++;
+    marker.setLatLng(route[head]);
+    line.addLatLng(route[head]);
+    if (head >= LINE_LENGTH_STEPS)
+      line.spliceLatLngs(0, 1);
+  }
+  if (!querying && route.length - head < QUERY_HEADSTART / MOVE_INTERVAL * 1000)
+    extendRoute();
+  setTimeout(advance, STEP_SIZE / SPEED_PX_PER_SEC * 1000);
+}
+
+function extendRoute() {
+  var b = map.getBounds();
+  var lat = Math.random() * (b.getNorth() - b.getSouth()) + b.getSouth();
+  var lon = Math.random() * (b.getEast() - b.getWest()) + b.getWest();
+  queryRoute([lat, lon]);
+  if (route.length > LINE_LENGTH_STEPS * 5 && head > LINE_LENGTH_STEPS + 1) {
+    route.splice(0, head - LINE_LENGTH_STEPS - 1);
+    head = LINE_LENGTH_STEPS + 1;
+  }
+}
+
+function routeCallback(err, routes) {
+  if (routes && routes.length ) {
+    var from = route[route.length - 1];
+    var i, j, steps, delta, nxt, from_px, to_px;
+    var p = L.point(from[1], from[0]);
+    for (i = 1; i < routes[0].coordinates.length; i++) {
+      nxt = routes[0].coordinates[i];
+      from_px = map.latLngToLayerPoint([p.y, p.x]);
+      to_px = map.latLngToLayerPoint(nxt);
+      steps = Math.max(1, Math.ceil(from_px.distanceTo(to_px) / STEP_SIZE));
+      delta = L.point((nxt.lng - p.x) / steps, (nxt.lat - p.y) / steps);
+      for (j = 0; j < steps; j++) {
+        p = p.add(delta);
+        route.push([p.y, p.x]);
+      }
+    }
+  }
+  querying = false;
+}
+
+function queryRoute(to) {
+  querying = true;
+  var from = route[route.length - 1];
+  router.route(
+      [
+        {latLng: L.latLng(from[0], from[1])},
+        {latLng: L.latLng(to[0], to[1])}
+      ], routeCallback, null,
+      { geometryOnly: true, z: map.getZoom() }
+  );
+}
+</script>
+</body>
