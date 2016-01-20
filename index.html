@@ -68,7 +68,7 @@ function init() {
     tap: false, touchZoom: false, keyboard: false,
     zoomControl: false, attributionControl: false
   }).setView([55.8, 37.52], 13);
-  L.tileLayer('data:image/gif;base64,R0lGODdhAQABAIABAAAAAP///ywAAAAAAQABAAACAkQBADs=').addTo(map);
+  L.tileLayer('tiles/{z}/{x}/{y}.png').addTo(map);
   line = L.polyline([route[0]], {
     color: '#444',
     weight: 1,
